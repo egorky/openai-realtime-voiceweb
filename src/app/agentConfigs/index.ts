@@ -1,6 +1,7 @@
 import { simpleHandoffScenario } from './simpleHandoff';
 import { customerServiceRetailScenario } from './customerServiceRetail';
 import { chatSupervisorScenario } from './chatSupervisor';
+import { virtucobrosScenario } from './virtucobros';
 
 import type { RealtimeAgent } from '@openai/agents/realtime';
 
@@ -9,6 +10,7 @@ export const allAgentSets: Record<string, RealtimeAgent[]> = {
   simpleHandoff: simpleHandoffScenario,
   customerServiceRetail: customerServiceRetailScenario,
   chatSupervisor: chatSupervisorScenario, // This is RealtimeAgent[]
+  virtucobros: virtucobrosScenario,
 };
 
 export const defaultAgentSetKey = 'chatSupervisor';
@@ -16,6 +18,7 @@ export const defaultAgentSetKey = 'chatSupervisor';
 // Define and export supervisorSdkScenarioMap here
 import { customerServiceRetailCompanyName } from './customerServiceRetail'; // Ensure this is imported
 import { chatSupervisorCompanyName } from './chatSupervisor'; // Ensure this is imported
+import { virtucobrosCompanyName } from './virtucobros';
 
 export const supervisorSdkScenarioMap: Record<string, { scenario: RealtimeAgent[], companyName: string, displayName: string }> = {
   customerServiceRetail: {
@@ -32,5 +35,10 @@ export const supervisorSdkScenarioMap: Record<string, { scenario: RealtimeAgent[
     scenario: simpleHandoffScenario,
     companyName: "Haiku Services Inc.", // Usando el mismo que en clientSdkMap para consistencia
     displayName: "Asistente de Haikus" // Consistente con clientSdkMap
+  },
+  virtucobros: {
+    scenario: virtucobrosScenario,
+    companyName: virtucobrosCompanyName,
+    displayName: "Virtucobros"
   },
 };

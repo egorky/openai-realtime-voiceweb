@@ -22,6 +22,7 @@ import { createModerationGuardrail } from "@/app/agentConfigs/guardrails";
 import { customerServiceRetailScenario, customerServiceRetailCompanyName } from "@/app/agentConfigs/customerServiceRetail";
 import { simpleHandoffScenario } from "@/app/agentConfigs/simpleHandoff";
 import { chatSupervisorScenario, chatSupervisorCompanyName } from "@/app/agentConfigs/chatSupervisor"; // Corrected path
+import { virtucobrosScenario, virtucobrosCompanyName } from "@/app/agentConfigs/virtucobros";
 
 // Client-specific map for scenarios. Only include scenarios a client can initiate.
 // Added displayName for the dropdown
@@ -29,6 +30,7 @@ const clientSdkScenarioMap: Record<string, { scenario: RealtimeAgent[], companyN
   customerServiceRetail: { scenario: customerServiceRetailScenario, companyName: customerServiceRetailCompanyName, displayName: "Servicio al Cliente (Retail)" },
   simpleHandoff: { scenario: simpleHandoffScenario, companyName: "Haiku Services Inc.", displayName: "Asistente de Haikus" }, // Provided a company name
   chatSupervisor: { scenario: chatSupervisorScenario, companyName: chatSupervisorCompanyName, displayName: "Demo Supervisor (Cliente)" }, // Used imported company name
+  virtucobros: { scenario: virtucobrosScenario, companyName: virtucobrosCompanyName, displayName: "Virtucobros" },
 };
 
 // Determine a safe default agent key for the client page.
@@ -269,50 +271,20 @@ function ClientApp() {
   };
 
 
-  const fetchEphemeralKey = async (): Promise<string | null> => {
-    logClientEvent({ url: "/session" }, "fetch_session_token_request", currentConversationId || undefined);
-    let tokenResponseMessage = "Error: Could not obtain session token."; // Default error message
-
+  const fetchSessionData = async (): Promise<{ client_secret: string; wsUrl: string; headers: Record<string, string>; } | null> => {
+    logClientEvent({ url: "/session" }, "fetch_session_request", currentConversationId || undefined);
     try {
-      const tokenResponse = await fetch("/api/session");
-      const data = await tokenResponse.json();
-      logServerEvent(data, "fetch_session_token_response", currentConversationId || undefined);
+      const response = await fetch("/api/session");
+      const data = await response.json();
+      logServerEvent(data, "fetch_session_response", currentConversationId || undefined);
 
-      if (!tokenResponse.ok) {
-        // Server responded with an error status (4xx, 5xx)
-        // `data` should contain the error structure from our API route
-        const serverError = data.error || "Unknown server error";
-        const errorDetails = data.details ? (typeof data.details === 'string' ? data.details : JSON.stringify(data.details)) : "";
-        tokenResponseMessage = `Error: ${serverError}${errorDetails ? ` (Details: ${errorDetails})` : ''}`;
-
-        console.error(`Failed to fetch ephemeral key: ${tokenResponse.status} ${tokenResponse.statusText}`, data);
-        logClientEvent({ error: serverError, details: data.details, status: tokenResponse.status }, "error.fetch_ephemeral_key_failed_status", currentConversationId || undefined);
-        setSessionStatus("DISCONNECTED");
-        addTranscriptMessage(uuidv4().slice(0,32), "system", tokenResponseMessage, true);
+      if (!response.ok) {
+        addTranscriptMessage(uuidv4().slice(0,32), "system", `Error: ${data.error || "Failed to fetch session."}`, true);
         return null;
       }
-
-      if (!data.client_secret?.value) {
-        // Server responded with 200 OK, but the key is missing in the response.
-        // This case is now less likely if the server-side check is robust, but good to keep.
-        tokenResponseMessage = data.error ? `Error: ${data.error}` : "Error: Session token not found in server response.";
-        console.error("No ephemeral key provided by the server, though response was OK:", data);
-        logClientEvent(data, "error.no_ephemeral_key_value", currentConversationId || undefined);
-        setSessionStatus("DISCONNECTED");
-        addTranscriptMessage(uuidv4().slice(0,32), "system", tokenResponseMessage, true);
-        return null;
-      }
-
-      // Success case
-      return data.client_secret.value;
-
+      return data;
     } catch (error: any) {
-      // Catch network errors or issues with `tokenResponse.json()` if response isn't valid JSON
-      console.error("Network or parsing error fetching ephemeral key:", error);
-      tokenResponseMessage = `Error: Network or server communication issue. ${error.message || ""}`;
-      logClientEvent({ error: error.message, type: error.type }, "error.fetch_ephemeral_key_network_or_parse", currentConversationId || undefined);
-      setSessionStatus("DISCONNECTED");
-      addTranscriptMessage(uuidv4().slice(0,32), "system", tokenResponseMessage, true);
+      addTranscriptMessage(uuidv4().slice(0,32), "system", "Error fetching session.", true);
       return null;
     }
   };
@@ -335,8 +307,8 @@ function ClientApp() {
 
 
     try {
-      const EPHEMERAL_KEY = await fetchEphemeralKey(); // This will now use currentConversationId for its logs
-      if (!EPHEMERAL_KEY) return; // Error already handled by fetchEphemeralKey
+      const sessionData = await fetchSessionData();
+      if (!sessionData) return;
 
       const scenarioAgents = [...selectedScenarioInfo.scenario];
       // Ensure the currentAgentName (which should be the first in the scenario, or from handoff) is root
@@ -353,7 +325,7 @@ function ClientApp() {
       const guardrail = createModerationGuardrail(selectedScenarioInfo.companyName);
 
       await connect({
-        getEphemeralKey: async () => EPHEMERAL_KEY,
+        getSession: async () => sessionData,
         initialAgents: scenarioAgents,
         audioElement: sdkAudioElement,
         outputGuardrails: [guardrail],

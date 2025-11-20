@@ -16,7 +16,7 @@ export interface RealtimeSessionCallbacks {
 }
 
 export interface ConnectOptions {
-  getEphemeralKey: () => Promise<string>;
+  getSession: () => Promise<{ client_secret: string; wsUrl: string; headers: Record<string, string>; }>;
   initialAgents: RealtimeAgent[];
   audioElement?: HTMLAudioElement;
   extraContext?: Record<string, any>;
@@ -111,7 +111,7 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
 
   const connect = useCallback(
     async ({
-      getEphemeralKey,
+      getSession,
       initialAgents,
       audioElement,
       extraContext,
@@ -122,7 +122,12 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
 
       updateStatus('CONNECTING');
 
-      const ek = await getEphemeralKey();
+      const sessionData = await getSession();
+      if (!sessionData) {
+        updateStatus('DISCONNECTED');
+        return;
+      }
+      const { client_secret, wsUrl, headers } = sessionData;
       const rootAgent = initialAgents[0];
 
       // This lets you use the codec selector in the UI to force narrow-band (8 kHz) codecs to
@@ -130,15 +135,18 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
       const codecParam = codecParamRef.current;
       const audioFormat = audioFormatForCodec(codecParam);
 
+      const transport = new OpenAIRealtimeWebRTC({
+        audioElement,
+        wsUrl,
+        headers,
+        changePeerConnection: async (pc: RTCPeerConnection) => {
+          applyCodec(pc);
+          return pc;
+        },
+      });
+
       sessionRef.current = new RealtimeSession(rootAgent, {
-        transport: new OpenAIRealtimeWebRTC({
-          audioElement,
-          // Set preferred codec before offer creation
-          changePeerConnection: async (pc: RTCPeerConnection) => {
-            applyCodec(pc);
-            return pc;
-          },
-        }),
+        transport: transport,
         model: 'gpt-4o-realtime-preview-2025-06-03',
         defaultPrompt: defaultPrompt, // Pass it here
         config: {
@@ -152,7 +160,7 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
         context: extraContext ?? {},
       });
 
-      await sessionRef.current.connect({ apiKey: ek });
+      await sessionRef.current.connect({ apiKey: client_secret });
       updateStatus('CONNECTED');
     },
     [callbacks, updateStatus],
